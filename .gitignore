@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Slidev build/export output
+dist/
+.slidev/
+*.pdf
+*.pptx
+slides-export*/
+
+# Logs
+npm-debug.log*
+*.log
+
+# Environment
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
