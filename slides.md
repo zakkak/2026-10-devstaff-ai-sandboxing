@@ -47,8 +47,8 @@ Why this talk: an agent running in bypass-permissions mode deleted a whole C: dr
 
 ## isx
 
-- Disposable **system containers** (or KVM VMs) on **Incus**
-- Template → instant **CoW branch**
+- Disposable **system containers** (or VMs) on **Incus**
+- Instant **CoW branch**
 - Host-side **MITM TLS proxy** injects credentials
 - Network modes: full, proxy-only, airgap
 - Linux; macOS 15+ via a VM -- Apache-2.0
@@ -58,7 +58,7 @@ Why this talk: an agent running in bypass-permissions mode deleted a whole C: dr
 
 ## OpenShell
 
-- NVIDIA runtime for **agent sandboxes** (any OCI image)
+- Disposable container images (any OCI image), experimental support for microVM
 - Declarative **YAML policy**: Landlock + per-binary network proxy
 - **Providers** keep credentials out of the sandbox
 - Shared **gateway** with workspaces and RBAC
@@ -895,7 +895,7 @@ openshell policy set --global --policy ./global-policy.yaml   # applies to every
 
 <!--
 Policy order: global policy, then the sandbox's saved policy (--policy, then OPENSHELL_SANDBOX_POLICY), then a policy baked into the image at /etc/openshell/policy.yaml, then the restrictive built-in default (no outbound network). From the OpenShell docs; not run by me.
---> -->
+-->
 
 ---
 
@@ -905,7 +905,7 @@ Policy order: global policy, then the sandbox's saved policy (--policy, then OPE
 No `sudo`, no `dnf`: Landlock rules are fixed at start and privilege escalation is blocked.
 
 ```bash
-pip install --user ruff                       # lands in ~/.local, no root needed
+pip install --user ruff --no-audit            # lands in ~/.local, no root needed
 npm install -g --prefix ~/.local typescript   # needs PATH to include ~/.local/bin
 ```
 
@@ -936,118 +936,8 @@ go get github.com/NVIDIA/OpenShell/sdk/go@latest
 ```
 
 ---
-layout: section
----
 
-# Only in isx
-
----
-
-# Copy-on-Write Branching
-
-- Templates inherit via `parent:`; branches are **instant** and cost only their delta
-- Template builds prime caches (`prime: mvn dependency:go-offline`)
-- Host-side shared artifact cache: OCI layers, Maven/Gradle, DNF, tool downloads
-- Throwaway by design: branch → work → destroy
-
-```bash
-isx branch agent1 --from tpl-quarkus --cpu 4 --memory 8GB --disk 50GB
-```
-
-Full **system containers**: real init, services, nested podman/Docker.
-
----
-
-# Agents Managing Agents (MCP)
-
-```bash
-claude mcp add --scope user isx -- ~/.local/bin/isx mcp
-isx branch coord --from tpl-dev --proxy-only --mcp-client
-```
-
-- Tools: `create_instance`, `exec`, `delegate`, `get_diff`, `wait_any`, `keep_instance`, …
-- Approved-template allowlist, max instances, turn budget, audit log with scrubbed credentials
-- A coordinator agent *inside* a box can fan work out to other boxes
-
----
-
-# Per-Instance Accounts, Tools & Host Resources
-
-<div class="grid grid-cols-2 gap-8">
-<div>
-
-```bash
-isx account set review claude=acme-client github=acme-bot
-```
-
-- Multiple Claude (OAuth / Vertex) and GitHub accounts
-- Built-in tools: claude, codex, copilot, bob, pi, gh, podman, maven, vscode-remote, idea-backend…
-- `agent_note` → generated `/etc/claude-code/CLAUDE.md`
-- Pre-installed Claude Code skills
-
-</div>
-<div>
-
-```yaml
-host-resources:
-  - source: ~/.m2/repository
-    mode: overlay   # RO base + writable layer
-  - source: ~/.gitconfig
-    mode: readonly
-  - source: ~/.ssh
-    mode: copy
-```
-
-Optional GUI passthrough (Linux), KVM VMs for hostile code.
-
-</div>
-</div>
-
----
-layout: section
----
-
-# Only in OpenShell
-
----
-
-# Declarative, Kernel-Enforced Policy
-
-- **Landlock** filesystem rules + process user/group restrictions
-- **Network policy per binary → host/port**, with request-level control
-- **Hot reload** of network rules and middleware on a running sandbox
-- `network_middlewares`: inspect, transform or block traffic
-- Policies are reviewable files you can version in git
-- **Global policy**: one admin-set policy for every sandbox on a gateway
-
-Security docs list *every control, its default, and the risk of changing it*.
-
----
-
-# Human-in-the-Loop Approval & Formal Verification
-
-- Denied access surfaces as **pending rule proposals**
-- Reviewer approves/rejects with `openshell rule …` or `openshell term`
-- `manual` (default) or `auto`: risky or flagged destinations still go to a human
-- Export approved rules into a policy file and version it
-- Policy changes are **formally verified**: risky new access (e.g. credentials to a new host) gets flagged
-- Provider profiles bind credentials to endpoints *and* executable paths
-
----
-
-# Platform: Gateways, Providers, SDKs
-
-- **Gateways**: local (default) or **Kubernetes** via Helm; set a default image and a global policy
-- **Shared gateway**: workspaces + RBAC via OIDC
-- **Providers**: agents call model APIs with keys injected on the wire
-- **Observability**: CLI/TUI logs, OCSF JSON export
-- **SDKs**: Python, TypeScript, Go, Rust
-- Agent skills (`npx skills add NVIDIA/OpenShell`) teach agents to write policies and debug gateways
-- Works with any agent (OpenCode examples in docs)
-
----
-
-# Shared Setup: One Gateway, Many Users
+# OpenShell: Shared Setup -- One Gateway, Many Users
 
 ```mermaid {theme: 'base', scale: 0.66}
 %%{init: {'flowchart': {'curve': 'basis', 'nodeSpacing': 30, 'rankSpacing': 60, 'wrappingWidth': 400}, 'themeVariables': {'fontSize': '18px', 'edgeLabelBackground': '#ffffff'}}}%%
@@ -1087,7 +977,7 @@ A **workspace** is the isolation boundary: sandboxes, templates, providers, prof
 
 ---
 
-# Shared Gateway: Roles and Admin Control
+# OpenShell: Shared Gateway -- Roles and Admin Control
 
 | Role | Assigned by | Can |
 |---|---|---|
@@ -1125,16 +1015,15 @@ Admins decide what users can reach: they own providers (credentials), policy and
 - Git must use **HTTPS**, not SSH
 - No read-write host project mounts (by design): work returns via `isx://` git remotes
 - No commit signing yet (#271): the private key would have to be in the box
-- Proxy must be running (non-airgap)
-- Needs Incus + a CoW storage pool on the host
 
 </div>
 <div>
 
 ## OpenShell
 
-- Young: 0.x releases, breaking changes
 - Windows only via WSL 2 (experimental)
+- microVM support experimental  
+  (broken last time I tried with large image)
 - Filesystem & process policy is **static**
 - No `sudo`: bake system packages into the image
 - Default image is minimal: bring your own
@@ -1145,23 +1034,23 @@ Admins decide what users can reach: they own providers (credentials), policy and
 </div>
 </div>
 
+
+<--
 ---
-layout: center
-class: text-center
----
 
-# Highlights
+# Take-aways
+&nbsp;
 
-| | isx | OpenShell |
-|---|---|---|
-| Isolation | Incus system containers / KVM VMs | Landlock + network proxy in a container |
-| Environment | Full dev machine, instant CoW branches | Any OCI image, templates |
-| Credentials | Host MITM proxy injects secrets | Providers bound to endpoint + binary |
-| Network | Modes: full, proxy-only, airgap | Per binary → host policy, hot reload |
-| Control | Approved-template allowlist (MCP) | Rule approval (manual/auto), global policy |
-| Scale | Local host, MCP delegation | Gateway: workspaces, RBAC, Kubernetes |
+## isx offers a more dev-friendly UX
+- easy to install any tool
+- full system abstraction
+- automatic ssh config and git remotes
+- easy and cheap branch creation
 
-<div class="opacity-70 pt-4">Sources: github.com/Sanne/incus-spawn · docs.nvidia.com/openshell</div>
+## OpenShell offers a more corporate/admin-friendly UX
+- fine-grained control of what's allowed
+- hierarchical configuration support (org -> team -> user)
+- backed by NVIDIA
 
 ---
 layout: center
